@@ -1,0 +1,128 @@
+---
+title: "QTM_220_Project"
+author: "Victoria Ontiveros, Rishika Shah, Randy Truong, Alex Zhong, Christine Zhou"
+date: "26/04/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+librarian::shelf(tidyverse)
+library("lmtest")
+library("sandwich")
+```
+
+## Data
+
+```{r}
+og_music <- read.csv("music.csv")
+
+music <- og_music[,c("artist.hotttnesss","artist.latitude","artist.longitude","artist.terms","song.duration","song.end_of_fade_in","song.start_of_fade_out","song.tempo","song.loudness","song.beats_start", "song.hotttnesss","song.year")]
+
+head(music)
+summary(music)
+```
+
+## 
+```{r q1}
+
+music1 <- music %>%
+  filter(song.year >= 2000 & song.year <= 2010)
+
+music1 <- music1[, c("song.hotttnesss", "song.tempo", "song.duration", "song.loudness")]
+
+music1<-music1%>%
+  drop_na %>%
+  filter(song.tempo!=0 & song.duration!=0 & song.hotttnesss > 0)
+
+head(music1)
+
+fit1 <- lm(song.hotttnesss~song.duration+song.tempo+song.loudness+I(song.duration^2)+I(song.tempo^2), data = music1)
+summary(fit1)
+plot(density(fit1$residuals))
+```
+
+
+```{r q2}
+music2 <- music %>% 
+  select(song.year, song.tempo, song.duration, song.end_of_fade_in, song.start_of_fade_out) %>% 
+  filter(song.year != 0 & song.tempo > 0 & song.duration > 0) %>%
+  mutate(fade_out_length = round(song.duration, 3) - song.start_of_fade_out)
+
+q2_fit <- lm(song.year ~ song.tempo + song.duration + song.end_of_fade_in + fade_out_length, data = music2)
+
+plot(density(q2_fit$residuals))
+```
+```{r}
+q2_tempo <- lm(song.tempo ~ song.year, data = music2)
+q2_duration <- lm(song.duration ~ song.year, data = music2)
+q2_fadein <- lm(song.end_of_fade_in ~ song.year, data = music2)
+q2_fadeout <- lm(fade_out_length ~ song.year, data = music2)
+```
+
+```{r}
+ggplot(data = music2, mapping = aes(x = song.year, y = song.tempo)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+ggplot(data = music2, mapping = aes(x = song.year, y = song.duration)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+ggplot(data = music2, mapping = aes(x = song.year, y = song.end_of_fade_in)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+ggplot(data = music2, mapping = aes(x = song.year, y = fade_out_length)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+
+
+```{r q4}
+q3 <- og_music[,c("song.year", "artist.terms", "song.beats_start", "song.tempo", "song.loudness", "song.duration")]
+
+# filtered to 2000-2010 time range cross section
+
+# initial filter
+music3 <- q3 %>%
+  drop_na() %>%
+  filter(song.year!=0 & song.beats_start>0 & song.tempo!=0 & song.loudness!=0 & song.duration!=0)
+
+# get preferred cross section
+# q4 hist plot by years
+ggplot(music3, aes(song.year)) +
+  geom_histogram()
+
+# binarized genres: "pop" vs. "not pop"
+pattern <- "pop"
+
+music3 <- q3 %>%
+  drop_na() %>%
+  filter(song.year!=0 & song.beats_start>0 & song.tempo>0 & song.loudness!=0 & song.duration>0) %>%
+  filter(song.year >= 2000 & song.year <= 2010) %>%
+  mutate(is_pop = str_detect(artist.terms, pattern, negate = FALSE)) %>%
+  mutate(is_pop_num = ifelse(is_pop, 1, 0))
+
+music3
+
+# run lm fit
+# Genre ~ song.beats + song.tempo + song.loudness + song.duration
+q3_fit=lm(is_pop_num~song.beats_start+song.tempo+song.loudness+song.duration, data=music3)
+summary(q3_fit)
+
+```
+```{r}
+q3_beats <- lm(song.beats_start ~ is_pop_num, data = music3)
+q3_tempo <- lm(song.tempo ~ is_pop_num, data = music3)
+q3_loudness <- lm(song.loudness ~ is_pop_num, data = music3)
+q3_duration <- lm(song.duration ~ is_pop_num, data = music3)
+
+```
+
+
+```{r}
+coeftest(q3_fit, vcov=vcovHC(q3_fit, type="HC1"))
+```
+
